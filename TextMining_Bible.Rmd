@@ -1,0 +1,272 @@
+---
+title: "A Homework of Biblical Proportions"
+author: "Sanath Shivaswamy & Christian Ghorbani"
+date: "April 29, 2016"
+output: html_document
+---
+
+In this HW, which I borrowed from Professor Mahmoud Parsian's course on Big Data (highly recommended), we will analyze the text of the bible. The ascii version resides in the file "ascii_bible.txt" on Camino. Use an editor to familiarize yourself with the structure of the file. Then perform the following operations, listed below as questions for you to answer. 
+
+## Q1: Read in the file using any R function you like and store each verse in a text array. After which print the top 20 verses. (Remove the top two lines which contain the title.)
+
+
+```{r}
+library(stringr)
+bible_full = readLines("ascii_bible.txt")
+bible_text = str_replace(bible_full,"^\\s+","") #remove leading whitespaces 
+res = grep("[0-9][0-9][0-9]:[0-9][0-9][0-9]",bible_text)
+temp = NULL
+for (i in seq(1:(length(res)-1))){
+  x = paste(bible_text[res[i]:(res[i+1]-1)],collapse = " ")
+  temp = c(temp,x)
+}
+verses = c(temp,paste(bible_text[res[length(res)]:length(bible_text)],collapse = " "))
+verses[1:20]
+```
+
+## Q2: How many verses are there in total? 
+
+```{r}
+length(verses)
+# 31102 verses in bible
+```
+
+## Q3: Each verse has the number "CCC:VVV" where CCC is the chapter number and VVV is the verse number. How many chapters are there? 
+
+```{r}
+chap = grep("[0-9][0-9][0-9]:001",verses)
+length(chap)
+# 1189 Chapters in bible
+```
+
+## Q4: Extract an array for the verse numbers, and also one for the verse text.
+
+```{r}
+ver_no = c(substr(verses,5,7)) #array of verse numbers
+ver_txt =  str_split_fixed(verses, "[0-9][0-9][0-9]:[0-9][0-9][0-9] ",2)
+ver_txt = ver_txt[,2]
+head(ver_no)
+head(ver_txt)
+```
+
+## Q5: Lower case all text.
+
+```{r}
+ver_txt = str_to_lower(ver_txt)
+```
+
+
+## Q6: Convert the text of all verses into a Corpus using the **tm** package. 
+
+```{r}
+library(tm)
+ver_txt = Corpus(VectorSource(ver_txt))
+ver_txt
+```
+
+## Q7: Remove all punctuation. Use a corpus function for this. How many unique words are there? 
+
+```{r}
+ver_txt = tm_map(ver_txt,removePunctuation)
+ver_uniq = DocumentTermMatrix(ver_txt)
+ver_uniq 
+#12651 unique words
+```
+
+## Q8: Remove all stopwords. Now how many unique terms are there? 
+
+```{r}
+ver_stp = ver_txt
+ver_stp = tm_map(ver_stp,removeWords,stopwords("english"))
+ver_uniq = DocumentTermMatrix(ver_stp)
+ver_uniq 
+#12555 unqiue words
+```
+
+## Q9: Now stem the text, and see how many unique words there are.
+
+```{r}
+library(SnowballC)
+ver_stem = tm_map(ver_stp,stemDocument)
+ver_uniq = DocumentTermMatrix(ver_stem)
+ver_uniq
+#9125 unique words
+```
+
+## Q10: Convert the corpus into a term-document matrix (TDM), where each verse is a separate document. How many distinct words are there in the bible?
+
+```{r}
+ver_tdm = DocumentTermMatrix(ver_stem)
+ver_tdm
+#9125 distinct words in the bible
+```
+
+## Q11: Convert the TDM into a matrix and find the 50 most common words in the bible. 
+
+```{r}
+spr_rmv = removeSparseTerms(ver_tdm,0.99) 
+ver_mat = as.matrix(spr_rmv)
+cm_words = sort(colSums(ver_mat), decreasing = TRUE) #frequency for each term
+w_50 = head(cm_words,50)
+w_50 #50 most common words
+```
+
+## Q12: Make a wordcloud of the top 100 words in the bible. 
+
+```{r}  
+library(wordcloud)  
+w_100 = head(cm_words,100) 
+w_100_nms = names(w_100) #names of top 100 words
+wordcloud(w_100_nms,w_100) #creating word cloud
+```
+
+## Q13: Mood score the original text of the bible (before stemming)
+
+```{r}
+#creating positive and negitive words
+HIDict = readLines("inqdict.txt")
+dict_pos = HIDict[grep("Pos",HIDict)]
+poswords = NULL
+for (s in dict_pos) {
+    s = strsplit(s,"#")[[1]][1]
+    poswords = c(poswords,strsplit(s," ")[[1]][1])
+}
+dict_neg = HIDict[grep("Neg",HIDict)]
+negwords = NULL
+for (s in dict_neg) {
+    s = strsplit(s,"#")[[1]][1]
+    negwords = c(negwords,strsplit(s," ")[[1]][1])
+}
+poswords = tolower(poswords)
+negwords = tolower(negwords)
+poswords = unique(poswords)
+negwords = unique(negwords)
+
+#Mood Scoring the bible text
+ver_txt =  str_split_fixed(verses, "[0-9][0-9][0-9]:[0-9][0-9][0-9] ",2)
+ver_txt = ver_txt[,2] #bible text
+ver_txt = Corpus(VectorSource(ver_txt))
+ver_txt = tm_map(ver_txt,removePunctuation)
+v1 = data.frame(text = sapply(ver_txt, as.character), stringsAsFactors = FALSE) #corpus to dataframe
+v1 = str_replace(v1$text,"^\\s+","")  #remove leading whitespaces
+v1 = trimws(v1,which = "right") # triming trailing whitespaces
+v1 = str_to_lower(v1) 
+ver_txt1 = unlist(strsplit(v1," ")) #spliting by space to get words
+posmatch = match(ver_txt1,poswords)
+numposmatch = length(posmatch[which(posmatch>0)])
+negmatch = match(ver_txt1,negwords)
+numnegmatch = length(negmatch[which(negmatch>0)])
+print(c(numposmatch,numnegmatch))
+#No of Positive words = 56827
+#No of Negative words = 38769
+```
+
+
+
+## Q14: Summarize the bible into 100 verses. (Or some fraction of the total number of verses, it's your choice.) Be super careful here as this may take a long time unless you are clever about it, or find some elegant way to speed things up!
+
+```{r}
+a = c(2,2)
+b = c(2,2)
+x = data.frame(a,b)
+y = data.frame(a,b)
+z = data.frame(a,b)
+column_names = c("Pos_Score","Verse")
+x = `colnames<-`(x,column_names)
+counter = 1
+for(verse in v1){
+  ver_txt1 = unlist(strsplit(verse," "))
+  posmatch = match(ver_txt1,poswords)
+  numposmatch = length(posmatch[which(posmatch>0)])
+  if(numposmatch > 5){ #taking only those verses which have positive mood score > 5
+    x[counter,1] = numposmatch
+    x[counter,2] = verse
+    counter = counter + 1
+  }
+}
+
+sum_txt = x$Verse #Taking only verses
+
+#Function to generate Summary
+text_summary = function(text, n) {
+  m = length(text)  # No of sentences in input
+  jaccard = matrix(0,m,m)  #Store match index
+  for (i in 1:m) {
+    for (j in i:m) {
+      a = text[i]; aa = unlist(strsplit(a," "))
+      b = text[j]; bb = unlist(strsplit(b," "))
+      jaccard[i,j] = length(intersect(aa,bb))/
+                          length(union(aa,bb))
+      jaccard[j,i] = jaccard[i,j]
+    }
+  }
+  similarity_score = rowSums(jaccard)
+  res = sort(similarity_score, index.return=TRUE,
+          decreasing=TRUE)
+  idx = res$ix[1:n]
+  summary = text[idx]
+}
+
+#Summary of bible with 100 verses
+res = text_summary(sum_txt,100)
+res
+
+```
+
+
+```{r}
+#Working code to produce a Negative Summary
+#a = c(2,2)
+#b = c(2,2)
+#x = data.frame(a,b)
+#y = data.frame(a,b)
+#z = data.frame(a,b)
+#column_names = c("Neg_Score","Verse")
+#x = `colnames<-`(x,column_names)
+#counter = 1
+#for(verse in v1){
+#  ver_txt1 = unlist(strsplit(verse," "))
+#  negmatch = match(ver_txt1,negwords)
+#  numnegmatch = length(negmatch[which(negmatch>0)])
+#  if(numnegmatch > 5){ #taking only those verses which have positive mood score > 5
+#    x[counter,1] = numnegmatch
+#    x[counter,2] = verse
+#    counter = counter + 1
+#  }
+#}
+
+#sum_txt = x$Verse
+
+#res = text_summary(sum_txt,100)
+#head(res)
+```
+
+
+```{r}
+#Working code to produce a Mix of Positive and Negative Summary
+#a = c(2,2)
+#b = c(2,2)
+#x = data.frame(a,b)
+#y = data.frame(a,b)
+#z = data.frame(a,b)
+#column_names = c("Verse")
+#x = `colnames<-`(x,column_names)
+#counter = 1
+#for(verse in v1){
+#  ver_txt1 = unlist(strsplit(verse," "))
+#  posmatch = match(ver_txt1,poswords)
+#  numposmatch = length(posmatch[which(posmatch>0)])
+#  negmatch = match(ver_txt1,negwords)
+#  numnegmatch = length(negmatch[which(negmatch>0)])
+#  if(numposmatch > 5 | numnegmatch > 5){ #taking only those verses which have positive mood score > 5
+#    x[counter,1] = verse
+#    counter = counter + 1
+#  }
+#}
+#sum_txt = x$Verse
+
+#Summary of bible with 100 verses
+#res = text_summary(sum_txt,100)
+#head(res)
+```
+
